@@ -1,96 +1,117 @@
 <script lang="ts">
-	import { isToday, isSunday, previousSunday, format, eachDayOfInterval, addDays, isFirstDayOfMonth } from "date-fns";
+	import { isToday, format, eachDayOfInterval, endOfMonth } from "date-fns";
+	import { selectedDatesMap } from '$lib/stores/createEvent';
 
-	function getDatesInRange(startDate: number, endDate: number) {
-		return eachDayOfInterval({
-			start: new Date(startDate),
-			end: new Date(endDate)
-		})
+	const isBeforeDayOf = (date1: Date, date2: Date) => {
+		const day1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate()).getTime();
+		const day2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate()).getTime();
+		return day1 < day2;
 	}
 	
-	let now = new Date("2023-01-07")
-	let startDate = now;
-	if(!isSunday(now)){
-		startDate = previousSunday(now)
+	const startOfThisMonth = (date: Date) => {
+		return new Date(date.getFullYear(), date.getMonth(), 1);
 	}
 
-	let dateRangeCount = 40;
-	let endDate = addDays(startDate, dateRangeCount);
-
-	let selectedDates: {[key: number]: boolean} = {}
-	let lastSelectedDate: number;
-
-	const selectedDateClicked = (date: number, e: MouseEvent) => {
-		
-		if(selectedDates[date]){
-			delete selectedDates[date]
-			lastSelectedDate = undefined;
+	const startOfPreviousMonth = (date: Date) => {
+		if(date.getMonth() === 0){
+			return new Date(date.getFullYear() - 1, 11, 1);
 		} else {
-			if(!e.shiftKey){
-				lastSelectedDate = date;
+			return new Date(date.getFullYear(), date.getMonth() - 1, 1);
+		}
+	}
+
+	const startOfNextMonth = (date: Date) => {
+		if(date.getMonth() === 11){
+			return new Date(date.getFullYear() + 1, 0, 1);
+		} else {
+			return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+		}
+	}
+
+	const now = new Date();
+	let startDate = startOfThisMonth(now);
+	$: endDate = endOfMonth(startDate);
+	
+	let lastSelectedDate: number | undefined;
+
+	$: datesList = eachDayOfInterval({start: startDate.getTime(), end: endDate.getTime()});
+
+	$: month = {
+		name: format(startDate, 'LLLL'),
+		startingDayOfWeek: startDate.getDay(),
+		dates: datesList
+	}
+
+	// $: months =  datesList.reduce((acc, date, idx) => {
+	// 	const monthNumber = date.getMonth();
+	// 	if(monthNumber === datesList[idx-1]?.getMonth()){
+	// 		acc[monthNumber].dates.push(date)
+	// 	} else {
+	// 		acc.push({month: format(date, 'LLLL'), startingDayOfWeek: date.getDay(), dates: [date]})
+	// 	}
+	// 	return acc
+	// }, <{month: string, startingDayOfWeek: number, dates: Date[]}[]>[])
+	
+	
+	const selectedDateClicked = (date: Date, e: MouseEvent) => {
+		const selectedDateTime = date.getTime();
+		selectedDatesMap.update(dates => {
+			if(dates[selectedDateTime]){
+				delete dates[selectedDateTime];
+			} else {
+				dates[selectedDateTime] = {};
 			}
-			selectedDates[date] = true
-		}
+			return dates;
+		})
 
-		if (e.shiftKey && lastSelectedDate && lastSelectedDate !== date){
-			const datesBetween = getDatesInRange(lastSelectedDate, date);
-			datesBetween.forEach(date => {
-				selectedDates[`${date.getTime()}`] = true;
-			})
-		};
+		// if (e.shiftKey && lastSelectedDate && lastSelectedDate !== date){
+		// 	const datesBetween = eachDayOfInterval({start: lastSelectedDate, end: date});
+		// 	datesBetween.forEach(date => {
+		// 		selectedDates[`${date.getTime()}`] = true;
+		// 	})
+		// };
 
-		selectedDates = {...selectedDates}
-		console.log('selectedDates:', selectedDates);
+		// selectedDates = {...selectedDates}
 	}
 
-	type CalendarDate = {
-		date: Date,
-		dayOfWeek: number;
-		isSelected: boolean;
-	}
-
-	const datesList = getDatesInRange(startDate.getTime(), endDate.getTime());
 	
-	const months: {month: string, startingDayOfWeek: number, dates: Date[]}[] = [];
-	// get an array of arrays, each array is a month
-	datesList.forEach((date, idx) => {
-		const monthNumber = date.getMonth();
-		if(monthNumber === datesList[idx-1]?.getMonth()){
-			months[monthNumber].dates.push(date)
-		} else {
-			months.push({month: format(date, 'LLLL'), startingDayOfWeek: date.getDay(), dates: [date]})
-		}
-	})
-
-	const daysOfWeek = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+	const DAYS_OF_WEEK = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 </script>
 
 <div>
+	<div class="change-date-range">
+		<button class="date-range-button" class:disable={now.getMonth() < startDate.getMonth()} on:click={() => {
+			if(now.getMonth() < startDate.getMonth()){
+				startDate = startOfPreviousMonth(startDate)
+			}
+		}}>Previous Month</button>
+		<button class="date-range-button" on:click={() => {startDate = startOfNextMonth(startDate)}}>Next Month</button>
+	</div>
+	<div class="month">
+		{month.name}
+	</div>
 	<div class="days-of-week">
-		{#each daysOfWeek as day}
+		{#each DAYS_OF_WEEK as day}
 			<div>{day}</div>
 		{/each}
 	</div>
-	{#each months as month}
-		<div class="month">
-			{month.month}
-		</div>
-		<div class="month-dates">
-			{#each Array(month.startingDayOfWeek) as day}
-				<button class="date"></button>
-			{/each}
-			{#each month.dates as date}
-				<button
-				class:today={isToday(date)}
-				class:selected={selectedDates[date.getTime()] === true}
-				class='date selectable'
-				on:click={(e) => selectedDateClicked(date.getTime(), e)}
-				>
-				{date.getDate()}
-				</button>
-			{/each}
-		</div>
-	{/each}
+	<div class="month-dates">
+		{#each Array(month.startingDayOfWeek) as day}
+			<button class="date"></button>
+		{/each}
+		{#each month.dates as date}
+			<button
+			class:today={isToday(date)}
+			class:selected={$selectedDatesMap[date.getTime()]}
+			class:selectable={!isBeforeDayOf(date, now)}
+			class='date'
+			on:click={(e) => !isBeforeDayOf(date, now) && selectedDateClicked(date, e)}
+			>
+			{date.getDate()}
+			</button>
+		{/each}
+	</div>
+
 </div>
 
 <style>
@@ -106,6 +127,10 @@
 		background-color: transparent;
 		padding: 0;
 		border: none;
+		cursor: pointer;
+	}
+	.disable {
+		background-color: brown;
 	}
 	.month {
 		display: flex;
@@ -127,9 +152,12 @@
 		align-items: center;
 		border: 2px solid transparent;
 		box-sizing: border-box;
+		color: grey;
+	}
+	.selectable {
+		color: black;
 	}
 	.selectable:hover{
-		cursor: pointer;
 		border: 2px solid lightgray;
 	}
 	.selected {
@@ -138,5 +166,15 @@
 
 	.today, .today:hover {
 		border-color: blue;
+	}
+	.change-date-range {
+		display: flex;
+		column-gap: 1rem;
+	}
+	.date-range-button {
+		width: 100%;
+		border-radius: .25rem;
+		background-color: lightgray;
+		padding: .25rem;
 	}
 </style>
